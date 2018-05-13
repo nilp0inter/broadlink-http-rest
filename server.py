@@ -1,4 +1,5 @@
 from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
+import json
 import broadlink, configparser
 import sys, getopt
 import time, binascii
@@ -7,6 +8,7 @@ import settings
 import signal
 from os import path
 from Crypto.Cipher import AES
+
 
 class Server(BaseHTTPRequestHandler):
 
@@ -32,7 +34,7 @@ class Server(BaseHTTPRequestHandler):
 
         
         elif 'sendCommand' in self.path:
-            commandName = self.path.split('/')[2]
+            commandName = "/".join(self.path.split('/')[2:])
             if 'on' in commandName or 'off' in commandName:
                 status = commandName.rsplit('o', 1)[1]
                 realcommandName = commandName.rsplit('o', 1)[0]
@@ -46,8 +48,6 @@ class Server(BaseHTTPRequestHandler):
                 self.wfile.write("Failed: Unknonwn command")
             else:
                 self.wfile.write("Sent: %s" % commandName)
-                
-
 
 
         elif 'getStatus' in self.path:
@@ -75,23 +75,15 @@ class Server(BaseHTTPRequestHandler):
             else:
                 self.wfile.write("Failed: Unknown command")
 
-        elif 'a1'  in self.path:
-            sensor = self.path.split('/')[2]
-            result = getA1Sensor(sensor)
-            if result == False:
-                self.wfile.write("Failed getting A1 data")
-            else:
-                if sensor == 'temperature' or sensor == 'humidity':
-                    self.wfile.write('''{ "%s": %s }''' % (sensor, result))
-                else:
-                    self.wfile.write('''{ "%s": "%s" }''' % (sensor, result))
+        elif 'getCommands' in self.path:
+            self.wfile.write(json.dumps([x[0] for x in settingsFile.items('Commands')]))
         else:
             self.wfile.write("Failed")
 
 serverPort = ''
 
 def sendCommand(commandName):
-    device = broadlink.rm((RMIPAddress, RMPort), RMMACAddress)
+    device = broadlink.rm((RMIPAddress, RMPort), RMMACAddress, 'RM2')
     device.auth()
 
     deviceKey = device.key
@@ -119,7 +111,7 @@ def sendCommand(commandName):
             return True
 
 def learnCommand(commandName):
-    device = broadlink.rm((RMIPAddress, RMPort), RMMACAddress)
+    device = broadlink.rm((RMIPAddress, RMPort), RMMACAddress, 'RM2')
     device.auth()
 
     deviceKey = device.key
@@ -181,13 +173,6 @@ def getTempRM():
         return temperature
     return False 
 
-def getA1Sensor(sensor):
-    device = broadlink.a1((A1IPAddress, A1Port), A1MACAddress)
-    device.auth()
-    result = device.check_sensors()
-    if result:
-        return result[sensor]
-    return False 
 
 def signal_handler(signum, frame):
     print ("HTTP timeout, but the command should be already sent.")
@@ -224,25 +209,6 @@ if __name__ == "__main__":
         sys.exit(2)
     else:
         RMMACAddress = netaddr.EUI(RMMACAddress)
-
-    A1IPAddress = settings.A1IPAddress
-    if A1IPAddress.strip() == '':
-        print('IP address must exist in settings.ini or it should be entered as a command line parameter')
-        sys.exit(2)
-
-    A1Port = settings.A1Port
-    if A1Port.strip() == '':
-        print('Port must exist in settings.ini or it should be entered as a command line parameter')
-        sys.exit(2)
-    else:
-        A1Port = int(A1Port.strip())
-
-    A1MACAddress = settings.A1MACAddress
-    if A1MACAddress.strip() == '':
-        print('MAC address must exist in settings.ini or it should be entered as a command line parameter')
-        sys.exit(2)
-    else:
-        A1MACAddress = netaddr.EUI(A1MACAddress)
 
     RealTimeout = settings.Timeout
     if RealTimeout.strip() == '':
